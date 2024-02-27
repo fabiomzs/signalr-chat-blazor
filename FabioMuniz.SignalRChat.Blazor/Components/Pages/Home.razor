@@ -1,0 +1,101 @@
+﻿@page "/"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.SignalR.Client
+@inject NavigationManager Navigation
+@implements IAsyncDisposable
+
+<PageTitle>Chat</PageTitle>
+
+<div class="row">
+	<div class="col-lg-6">
+		<div class="card">
+			<div class="card-header">Hub Chat</div>
+			<div class="card-body">
+				<div class="boder-primary">
+					<div class="vstack gap-2">
+						<input type="text" class="form-control w-50" @bind="user" placeholder="Name" />
+						<br />
+						<textarea class="form-control" @bind="message" />
+					</div>
+					<br />
+					<div class="d-grid gap-2">
+						<button class="btn btn-primary" disabled="@(!IsConnected)" @onclick="Send">Send</button>
+					</div>
+				</div>
+			</div>
+			<div class="card-footer">
+				@(DateTime.Now)
+			</div>
+		</div>
+		<br />
+		@if (!IsConnected)
+		{
+			<div class="alert alert-danger">Chat disconnected</div>
+		}
+		else
+		{
+			<div class="alert alert-success">Chat connected</div>
+		}
+	</div>
+	<div class="col-lg-6">
+		<div class="list-group list-group-flush">
+			@foreach (var item in messages)
+			{
+				<div class="list-group-item">
+					<div class="d-flex w-100 justify-content-between">
+						<h5 class="mb-1">@item.User</h5>
+						<small>@item.Date</small>
+					</div>
+					<p class="mb-1">@item.Message</p>
+				</div>
+			}
+		</div>
+	</div>
+</div>
+
+@code {
+	private HubConnection? hubConnection;
+	private List<MessageChat> messages = new List<MessageChat>();
+	private string? user;
+	private string? message;
+	private DateTime date = DateTime.Now;
+
+	protected override async Task OnInitializedAsync()
+	{
+		hubConnection = new HubConnectionBuilder()
+			.WithUrl(Navigation.ToAbsoluteUri("/chathub"))
+			.Build();
+
+		hubConnection.On<string, string>("ReceiveMessage", (user, message) =>
+		{
+			var messageChat = new MessageChat(user, message, DateTime.Now);
+			messages.Add(messageChat);
+			InvokeAsync(StateHasChanged);
+		});		
+
+		await hubConnection.StartAsync();
+	}
+
+	private async Task Send()
+	{
+		if (hubConnection is not null)
+		{
+			await hubConnection.SendAsync("SendMessage", user, message);
+
+			message = null;
+		}
+	}
+
+	public bool IsConnected =>
+		hubConnection?.State == HubConnectionState.Connected;
+
+	public async ValueTask DisposeAsync()
+	{
+		if (hubConnection is not null)
+		{
+			await hubConnection.DisposeAsync();
+		}
+	}
+
+	private record MessageChat(string User, string Message, DateTime Date);
+}
